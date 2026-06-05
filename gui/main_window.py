@@ -148,7 +148,6 @@ class MainWindow(QMainWindow):
 
         # 分野フィルタ
         self._category_filter = CategoryFilterWidget(SETTINGS_PATH)
-        self._category_filter.selection_changed.connect(self._on_category_changed)
         layout.addWidget(self._category_filter)
 
         # テーブル
