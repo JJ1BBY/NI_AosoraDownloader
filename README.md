@@ -1,6 +1,7 @@
 # AosoraDownloader
 
 [青空文庫](https://www.aozora.gr.jp/)の作品をダウンロードし、EPUB 3.0形式に変換するWindows向けGUIアプリケーションです。
+高速化、公開日・最終更新日表示、カタログ更新を追加。
 
 ![スクリーンショット](screenshot.png)
 
@@ -119,15 +120,13 @@ EPUB生成・青空文庫テキスト解析はすべて標準ライブラリの�
 
 ## 修正履歴
 
-### 2026-03-15
-
-- **EPUB互換性修正**: ESP32ベースの電子書籍端末（xteink X4等）でEPUBが開けない問題を修正
-  - toc.ncx（EPUB2互換目次）を追加し、`<navMap>`要素で正しく構造化
-  - NCXヘッダーに必須メタ要素（`dtb:depth`, `dtb:totalPageCount`, `dtb:maxPageNumber`）を追加
-  - content.opfのmanifestにNCXを登録、`<spine>`に`toc="ncx"`属性を追加
-  - book_idを`uuid5`ベースの正規UUIDに変更（`urn:uuid:`スキーマ準拠）
+### 2026-06/06
 
 ## ライセンス
 
 本ソフトウェアが変換する作品データの著作権は各権利者に帰属します。
 青空文庫の利用規約に従ってご使用ください。
+
+## Credits
+
+Based on [AosoraDownloader](https://github.com/feeeeeeen/AosoraDownloader) by feeeeeeen.
