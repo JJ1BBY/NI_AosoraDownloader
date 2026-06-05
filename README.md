@@ -1,6 +1,7 @@
 # AosoraDownloader
 
 [青空文庫](https://www.aozora.gr.jp/)の作品をダウンロードし、EPUB 3.0形式に変換するWindows向けGUIアプリケーションです。
+
 高速化、公開日・最終更新日表示、カタログ更新を追加。
 
 ![スクリーンショット](screenshot.png)
