@@ -1,16 +1,23 @@
 import csv
 from pathlib import Path
 
+from . import catalog_cache
 from .models import Work
-from .ndc import parse_ndc_codes
 
 ROLE_AUTHOR = "著者"
 ROLE_TRANSLATOR = "翻訳者"
 
 
 def load_catalog(csv_path: str | Path) -> list[Work]:
-    """CSVファイルを読み込み、作品ID単位で集約したWorkリストを返す。"""
+    """CSVを読み込む。同一ディレクトリにSQLiteキャッシュがあれば優先使用。"""
     csv_path = Path(csv_path)
+    db_path = csv_path.with_suffix(".db")
+    csv_mtime = str(csv_path.stat().st_mtime)
+
+    cached = catalog_cache.load(db_path, csv_mtime)
+    if cached is not None:
+        return cached
+
     works_dict: dict[str, Work] = {}
 
     with csv_path.open(encoding="utf-8-sig") as f:
@@ -45,19 +52,19 @@ def load_catalog(csv_path: str | Path) -> list[Work]:
             elif role == ROLE_TRANSLATOR and person_name not in work.translators:
                 work.translators.append(person_name)
 
-    return list(works_dict.values())
+    works = list(works_dict.values())
+    catalog_cache.save(works, db_path, csv_mtime)
+    return works
 
 
 def filter_by_ndc(works: list[Work], prefixes: set[str]) -> list[Work]:
     """NDCプレフィックスセットで作品を絞り込む。prefixesが空なら全件返す。"""
     if not prefixes:
         return works
-    result = []
-    for w in works:
-        codes = parse_ndc_codes(w.classification)
-        if any(c.startswith(p) for c in codes for p in prefixes):
-            result.append(w)
-    return result
+    return [
+        w for w in works
+        if any(c.startswith(p) for c in w.ndc_codes for p in prefixes)
+    ]
 
 
 def search_works(

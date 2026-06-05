@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QThread, Signal
+from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -205,10 +205,21 @@ class MainWindow(QMainWindow):
         self._status_label = QLabel("")
         layout.addWidget(self._status_label)
 
+        # デバウンスタイマー（入力途中の連続フィルタを防ぐ）
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(300)
+        self._search_timer.timeout.connect(self._apply_filter)
+
         # シグナル接続
-        self._search_btn.clicked.connect(self._on_search)
-        self._author_input.returnPressed.connect(self._on_search)
-        self._title_input.returnPressed.connect(self._on_search)
+        self._search_btn.clicked.connect(self._apply_filter)          # 即時
+        self._author_input.returnPressed.connect(self._apply_filter)   # 即時
+        self._title_input.returnPressed.connect(self._apply_filter)    # 即時
+        self._author_input.textChanged.connect(self._search_timer.start)   # デバウンス
+        self._title_input.textChanged.connect(self._search_timer.start)    # デバウンス
+        self._category_filter.selection_changed.connect(
+            lambda _: self._search_timer.start()
+        )
         self._update_catalog_btn.clicked.connect(self._on_update_catalog)
         self._dir_btn.clicked.connect(self._on_select_dir)
         self._download_btn.clicked.connect(self._on_download)
@@ -290,12 +301,6 @@ class MainWindow(QMainWindow):
         self._progress.setVisible(False)
         self._status_label.setText("")
         QMessageBox.critical(self, "エラー", f"カタログの更新に失敗しました:\n{message}")
-
-    def _on_search(self):
-        self._apply_filter()
-
-    def _on_category_changed(self, _prefixes: set):
-        self._apply_filter()
 
     def _apply_filter(self):
         author = self._author_input.text().strip()

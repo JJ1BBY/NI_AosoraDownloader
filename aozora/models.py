@@ -18,6 +18,11 @@ class Work:
     release_date: str = ""
     last_updated: str = ""
     copyright: str = ""
+    ndc_codes: list[str] = field(default_factory=list, init=False)
+
+    def __post_init__(self):
+        from .ndc import parse_ndc_codes
+        self.ndc_codes = parse_ndc_codes(self.classification)
 
     @property
     def authors_display(self) -> str:
