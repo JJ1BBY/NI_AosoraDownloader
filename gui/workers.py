@@ -1,5 +1,10 @@
 """バックグラウンド処理用のQThreadワーカー。"""
 
+import io
+import urllib.request
+import zipfile
+from pathlib import Path
+
 from PySide6.QtCore import QThread, Signal
 
 from aozora.downloader import download_image, download_text
@@ -100,6 +105,62 @@ class DownloadConvertWorker(QThread):
 
         self.progress.emit(100, "完了")
         self.finished_all.emit(success, errors)
+
+
+CATALOG_ZIP_URL = "https://www.aozora.gr.jp/index_pages/list_person_all_extended_utf8.zip"
+_CHUNK = 65536  # 64 KB
+
+
+class CatalogUpdateWorker(QThread):
+    """青空文庫カタログCSVをダウンロード・展開して上書き保存するワーカー。"""
+
+    progress = Signal(int, str)   # (percent, message)
+    completed = Signal()          # QThread.finished を上書きしないよう別名
+    update_error = Signal(str)
+
+    def __init__(self, dest_csv: Path, parent=None):
+        super().__init__(parent)
+        self._dest = dest_csv
+
+    def run(self):
+        try:
+            self.progress.emit(0, "カタログをダウンロード中...")
+            req = urllib.request.Request(
+                CATALOG_ZIP_URL,
+                headers={"User-Agent": "AosoraDownloader/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                buf = io.BytesIO()
+                downloaded = 0
+                while True:
+                    chunk = resp.read(_CHUNK)
+                    if not chunk:
+                        break
+                    buf.write(chunk)
+                    downloaded += len(chunk)
+                    if total > 0:
+                        pct = min(int(downloaded / total * 80), 80)
+                        self.progress.emit(pct, f"ダウンロード中... {downloaded // 1024} KB")
+
+            self.progress.emit(85, "ZIPを展開中...")
+            buf.seek(0)
+            with zipfile.ZipFile(buf) as zf:
+                csv_names = [n for n in zf.namelist() if n.endswith(".csv")]
+                if not csv_names:
+                    raise RuntimeError("ZIP内にCSVファイルが見つかりません")
+                csv_data = zf.read(csv_names[0])
+
+            self.progress.emit(95, "CSVファイルを保存中...")
+            # 書き込み中クラッシュで元ファイルが破損しないよう一時ファイル経由で置換
+            tmp = self._dest.with_suffix(".tmp")
+            tmp.write_bytes(csv_data)
+            tmp.replace(self._dest)
+
+            self.progress.emit(100, "カタログ更新完了")
+            self.completed.emit()
+        except Exception as e:
+            self.update_error.emit(str(e))
 
 
 def _safe_filename(name: str) -> str:

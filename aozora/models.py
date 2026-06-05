@@ -16,6 +16,7 @@ class Work:
     html_url: str = ""
     card_url: str = ""
     release_date: str = ""
+    last_updated: str = ""
     copyright: str = ""
 
     @property

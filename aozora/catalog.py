@@ -2,6 +2,7 @@ import csv
 from pathlib import Path
 
 from .models import Work
+from .ndc import parse_ndc_codes
 
 ROLE_AUTHOR = "著者"
 ROLE_TRANSLATOR = "翻訳者"
@@ -34,6 +35,7 @@ def load_catalog(csv_path: str | Path) -> list[Work]:
                     html_url=row["XHTML/HTMLファイルURL"],
                     card_url=row["図書カードURL"],
                     release_date=row["公開日"],
+                    last_updated=row["最終更新日"],
                     copyright=row["作品著作権フラグ"],
                 )
                 works_dict[work_id] = work
@@ -44,6 +46,18 @@ def load_catalog(csv_path: str | Path) -> list[Work]:
                 work.translators.append(person_name)
 
     return list(works_dict.values())
+
+
+def filter_by_ndc(works: list[Work], prefixes: set[str]) -> list[Work]:
+    """NDCプレフィックスセットで作品を絞り込む。prefixesが空なら全件返す。"""
+    if not prefixes:
+        return works
+    result = []
+    for w in works:
+        codes = parse_ndc_codes(w.classification)
+        if any(c.startswith(p) for c in codes for p in prefixes):
+            result.append(w)
+    return result
 
 
 def search_works(

@@ -20,12 +20,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from aozora.catalog import load_catalog, search_works
+from aozora.catalog import filter_by_ndc, load_catalog, search_works
 from aozora.models import Work
-from gui.workers import DownloadConvertWorker
+from gui.category_filter import CategoryFilterWidget
+from gui.workers import CatalogUpdateWorker, DownloadConvertWorker
 
+CSV_PATH = Path(__file__).resolve().parent.parent / "list_person_all_extended_utf8.csv"
+SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
-COLUMNS = ["作品ID", "作品名", "著者", "翻訳者", "文字遣い", "分類"]
+COLUMNS = ["作品ID", "作品名", "著者", "翻訳者", "文字遣い", "分類", "公開日", "最終更新日"]
 
 
 class CatalogLoaderWorker(QThread):
@@ -71,7 +74,9 @@ class WorkTableModel(QAbstractTableModel):
         return len(COLUMNS)
 
     def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
+        if not index.isValid():
+            return None
+        if role not in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.UserRole):
             return None
         work = self._works[index.row()]
         col = index.column()
@@ -87,6 +92,10 @@ class WorkTableModel(QAbstractTableModel):
             return work.charset_type
         elif col == 5:
             return work.classification
+        elif col == 6:
+            return work.release_date
+        elif col == 7:
+            return work.last_updated
         return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -104,6 +113,7 @@ class MainWindow(QMainWindow):
         self._all_works: list[Work] = []
         self._worker: DownloadConvertWorker | None = None
         self._catalog_loader: CatalogLoaderWorker | None = None
+        self._catalog_updater: CatalogUpdateWorker | None = None
         self._output_dir = str(Path.home() / "Downloads")
 
         self._setup_ui()
@@ -130,13 +140,23 @@ class MainWindow(QMainWindow):
 
         self._search_btn = QPushButton("検索")
         filter_layout.addWidget(self._search_btn)
+
+        self._update_catalog_btn = QPushButton("カタログ更新")
+        self._update_catalog_btn.setToolTip("青空文庫からカタログCSVを再ダウンロードします")
+        filter_layout.addWidget(self._update_catalog_btn)
         layout.addLayout(filter_layout)
+
+        # 分野フィルタ
+        self._category_filter = CategoryFilterWidget(SETTINGS_PATH)
+        self._category_filter.selection_changed.connect(self._on_category_changed)
+        layout.addWidget(self._category_filter)
 
         # テーブル
         self._model = WorkTableModel()
         self._proxy = QSortFilterProxyModel()
         self._proxy.setSourceModel(self._model)
         self._proxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._proxy.setSortRole(Qt.ItemDataRole.UserRole)
 
         self._table = QTableView()
         self._table.setModel(self._proxy)
@@ -189,28 +209,28 @@ class MainWindow(QMainWindow):
         self._search_btn.clicked.connect(self._on_search)
         self._author_input.returnPressed.connect(self._on_search)
         self._title_input.returnPressed.connect(self._on_search)
+        self._update_catalog_btn.clicked.connect(self._on_update_catalog)
         self._dir_btn.clicked.connect(self._on_select_dir)
         self._download_btn.clicked.connect(self._on_download)
         self._table.selectionModel().selectionChanged.connect(self._on_selection_changed)
 
     def _load_data(self):
-        csv_path = Path(__file__).resolve().parent.parent / "list_person_all_extended_utf8.csv"
-        if not csv_path.exists():
-            QMessageBox.critical(self, "エラー", f"CSVファイルが見つかりません:\n{csv_path}")
+        if not CSV_PATH.exists():
+            QMessageBox.critical(self, "エラー", f"CSVファイルが見つかりません:\n{CSV_PATH}")
             return
         self._status_label.setText("データ読み込み中...")
         self._search_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)  # インデターミネートモード
 
-        self._catalog_loader = CatalogLoaderWorker(csv_path)
+        self._catalog_loader = CatalogLoaderWorker(CSV_PATH)
         self._catalog_loader.loaded.connect(self._on_catalog_loaded)
         self._catalog_loader.error.connect(self._on_catalog_error)
         self._catalog_loader.start()
 
     def _on_catalog_loaded(self, works: list[Work]):
         self._all_works = works
-        self._model.set_works(self._all_works)
+        self._apply_filter()
         self._update_count()
         self._status_label.setText("")
         self._search_btn.setEnabled(True)
@@ -222,10 +242,13 @@ class MainWindow(QMainWindow):
 
         # 列幅の初期調整
         self._table.setColumnWidth(0, 70)
-        self._table.setColumnWidth(1, 300)
-        self._table.setColumnWidth(2, 150)
-        self._table.setColumnWidth(3, 100)
-        self._table.setColumnWidth(4, 90)
+        self._table.setColumnWidth(1, 250)
+        self._table.setColumnWidth(2, 130)
+        self._table.setColumnWidth(3, 90)
+        self._table.setColumnWidth(4, 80)
+        self._table.setColumnWidth(5, 80)
+        self._table.setColumnWidth(6, 95)
+        self._table.setColumnWidth(7, 95)
 
     def _on_catalog_error(self, message: str):
         self._status_label.setText("")
@@ -237,14 +260,53 @@ class MainWindow(QMainWindow):
             self._catalog_loader = None
         QMessageBox.critical(self, "エラー", f"データ読み込みに失敗しました:\n{message}")
 
+    def _on_update_catalog(self):
+        self._update_catalog_btn.setEnabled(False)
+        self._search_btn.setEnabled(False)
+        self._progress.setVisible(True)
+        self._progress.setRange(0, 100)
+
+        self._catalog_updater = CatalogUpdateWorker(CSV_PATH)
+        self._catalog_updater.progress.connect(self._on_catalog_update_progress)
+        self._catalog_updater.completed.connect(self._on_catalog_update_finished)
+        self._catalog_updater.update_error.connect(self._on_catalog_update_error)
+        self._catalog_updater.finished.connect(self._catalog_updater.deleteLater)
+        self._catalog_updater.start()
+
+    def _on_catalog_update_progress(self, percent: int, message: str):
+        self._progress.setValue(percent)
+        self._status_label.setText(message)
+
+    def _on_catalog_update_finished(self):
+        self._catalog_updater = None
+        self._update_catalog_btn.setEnabled(True)
+        self._status_label.setText("カタログを再読み込み中...")
+        self._load_data()
+
+    def _on_catalog_update_error(self, message: str):
+        self._catalog_updater = None
+        self._update_catalog_btn.setEnabled(True)
+        self._search_btn.setEnabled(True)
+        self._progress.setVisible(False)
+        self._status_label.setText("")
+        QMessageBox.critical(self, "エラー", f"カタログの更新に失敗しました:\n{message}")
+
     def _on_search(self):
+        self._apply_filter()
+
+    def _on_category_changed(self, _prefixes: set):
+        self._apply_filter()
+
+    def _apply_filter(self):
         author = self._author_input.text().strip()
         title = self._title_input.text().strip()
-        if not author and not title:
-            self._model.set_works(self._all_works)
-        else:
-            results = search_works(self._all_works, author=author, title=title)
-            self._model.set_works(results)
+        results = self._all_works
+        if author or title:
+            results = search_works(results, author=author, title=title)
+        prefixes = self._category_filter.get_selected_prefixes()
+        if prefixes:
+            results = filter_by_ndc(results, prefixes)
+        self._model.set_works(results)
         self._update_count()
 
     def _update_count(self):
