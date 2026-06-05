@@ -11,3 +11,7 @@ venv/
 *.zip
 *.epub
 .claude/
+
+# 自動生成ファイル
+*.db
+settings.json
