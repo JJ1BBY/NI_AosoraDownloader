@@ -480,8 +480,6 @@ class MainWindow(QMainWindow):
         self._table.setShowGrid(False)
         self._table.horizontalHeader().setStretchLastSection(False)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(SHELF_COL, QHeaderView.ResizeMode.Fixed)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(28)
 
@@ -551,8 +549,9 @@ class MainWindow(QMainWindow):
             self._catalog_loader.deleteLater()
             self._catalog_loader = None
 
-        # 列幅の初期調整（作品名は Stretch なので除く）
+        # 列幅の初期調整
         self._table.setColumnWidth(0, 50)
+        self._table.setColumnWidth(1, 160)
         self._table.setColumnWidth(2, 95)
         self._table.setColumnWidth(3, 65)
         self._table.setColumnWidth(4, 70)
