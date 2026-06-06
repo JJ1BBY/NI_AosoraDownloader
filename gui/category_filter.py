@@ -1,4 +1,4 @@
-"""分野別フィルタウィジェット。コンパクトな折りたたみ式、複数選択対応。"""
+"""分野別フィルタウィジェット。常時展開の左レール。"""
 
 import json
 from pathlib import Path
@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QSizePolicy,
     QTreeWidget,
@@ -24,7 +25,7 @@ _PK = Qt.CheckState.PartiallyChecked
 
 
 class CategoryFilterWidget(QWidget):
-    """NDC分野別フィルタ。初期状態はコンパクトなヘッダーのみ表示。"""
+    """NDC分野別フィルタ。常時展開の左レール。"""
 
     selection_changed = Signal(set)  # set[str]: 選択された NDC プレフィックス
 
@@ -43,23 +44,17 @@ class CategoryFilterWidget(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ─ Header（常時表示）─
+        # ─ Header ─
         header = QFrame()
         header.setFrameShape(QFrame.Shape.StyledPanel)
         hl = QHBoxLayout(header)
-        hl.setContentsMargins(6, 3, 6, 3)
+        hl.setContentsMargins(8, 5, 6, 5)
         hl.setSpacing(6)
 
-        self._toggle = QPushButton("▶  分野フィルタ")
-        self._toggle.setFlat(True)
-        self._toggle.setCheckable(True)
-        self._toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._toggle.setStyleSheet(
-            "QPushButton { font-weight: bold; text-align: left; border: none; }"
-            "QPushButton:hover { color: #0066cc; }"
-        )
-        self._toggle.clicked.connect(self._on_toggle)
-        hl.addWidget(self._toggle)
+        title = QLabel("分野フィルタ")
+        title.setStyleSheet("font-weight: bold; font-size: 12px;")
+        hl.addWidget(title)
+        hl.addStretch()
 
         self._all_btn = QPushButton("全選択")
         self._none_btn = QPushButton("全解除")
@@ -72,9 +67,9 @@ class CategoryFilterWidget(QWidget):
         hl.addWidget(self._none_btn)
         root.addWidget(header)
 
-        # ─ Body（折りたたみ）─
+        # ─ Body（常時表示）─
         self._body = QFrame()
-        self._body.setVisible(False)
+        self._body.setVisible(True)
         self._body.setFrameShape(QFrame.Shape.StyledPanel)
         bl = QVBoxLayout(self._body)
         bl.setContentsMargins(4, 4, 4, 4)
@@ -82,16 +77,11 @@ class CategoryFilterWidget(QWidget):
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
-        self._tree.setMaximumHeight(250)
-        self._tree.setMinimumHeight(120)
         self._tree.setAlternatingRowColors(True)
+        self._tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._tree.itemChanged.connect(self._on_item_changed)
         bl.addWidget(self._tree)
         root.addWidget(self._body)
-
-    def _on_toggle(self, checked: bool):
-        self._body.setVisible(checked)
-        self._toggle.setText(("▼" if checked else "▶") + "  分野フィルタ")
 
     # ── Tree ──────────────────────────────────────────────────────────────────
 
